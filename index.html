@@ -320,8 +320,9 @@ let ratioStr      = '3:2';
 let activeField   = null;          // 'w' | 'h' | null
 let uploadedImg   = null;          // HTMLImageElement
 let originalFile  = null;          // File
-let originalExif  = null;          // piexif parsed object | null
-let origJpegB64   = null;          // base64 JPEG data for EXIF re-injection
+let originalExif  = null;          // piexif parsed object | null (display only)
+let origJpegB64   = null;          // base64 JPEG data (piexifjs display only)
+let origExifBytes = null;          // raw EXIF APP1 segment bytes (Uint8Array) — used for embedding
 let cropRect      = { x:0, y:0, w:0, h:0 }; // in image pixels (floats OK)
 let previewScale  = 1;             // canvas px per image px
 let interaction   = null;          // active drag descriptor
@@ -375,6 +376,62 @@ function dataUrlToBlob(dataUrl) {
   const arr = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
   return new Blob([arr], { type: mime });
+}
+
+// ── Raw JPEG byte helpers (more reliable than piexifjs round-trip) ────────────
+
+// Find and return the raw EXIF APP1 segment bytes from a JPEG ArrayBuffer.
+// Returns a Uint8Array of the full segment (FF E1 + length + data), or null.
+function extractExifSegment(buffer) {
+  const b = new Uint8Array(buffer);
+  if (b[0] !== 0xFF || b[1] !== 0xD8) return null; // not JPEG
+  let i = 2;
+  while (i + 3 < b.length) {
+    if (b[i] !== 0xFF) return null;          // malformed stream
+    const marker = b[i + 1];
+    if (marker === 0xD9 || marker === 0xDA) break; // EOI / SOS — stop
+    if (marker === 0xD8) { i += 2; continue; }     // SOI — no length
+    const segLen = (b[i + 2] << 8) | b[i + 3];    // length includes 2-byte field
+    // APP1 with EXIF header: "Exif\0\0"
+    if (marker === 0xE1 && segLen > 10 &&
+        b[i+4]===0x45 && b[i+5]===0x78 && b[i+6]===0x69 &&
+        b[i+7]===0x66 && b[i+8]===0x00 && b[i+9]===0x00) {
+      return b.slice(i, i + 2 + segLen); // FF E1 + 2-byte length + data
+    }
+    i += 2 + segLen;
+  }
+  return null;
+}
+
+// Splice an EXIF segment into a freshly-encoded canvas JPEG blob.
+// Inserts after the SOI marker, replacing any APP0/APP1 the encoder added.
+async function injectExifBytes(jpegBlob, exifSegment) {
+  const b = new Uint8Array(await jpegBlob.arrayBuffer());
+  if (b[0] !== 0xFF || b[1] !== 0xD8) return jpegBlob; // safety check
+  // Skip past SOI + any APP0 (JFIF) or APP1 that canvas already wrote
+  let offset = 2;
+  while (offset + 3 < b.length && b[offset] === 0xFF) {
+    const m = b[offset + 1];
+    if (m === 0xE0 || m === 0xE1) { // APP0 or APP1
+      offset += 2 + ((b[offset + 2] << 8) | b[offset + 3]);
+    } else break;
+  }
+  // Build: SOI | our EXIF segment | rest of canvas JPEG
+  const out = new Uint8Array(2 + exifSegment.length + (b.length - offset));
+  out[0] = 0xFF; out[1] = 0xD8;
+  out.set(exifSegment, 2);
+  out.set(b.slice(offset), 2 + exifSegment.length);
+  return new Blob([out], { type: 'image/jpeg' });
+}
+
+// Convert an ArrayBuffer to a base64 data URL (for piexifjs display parsing).
+function bufToDataUrl(buf, mime) {
+  const bytes = new Uint8Array(buf);
+  let b = '';
+  const chunk = 8192;
+  for (let i = 0; i < bytes.length; i += chunk)
+    b += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+  return `data:${mime};base64,` + btoa(b);
 }
 
 
@@ -516,41 +573,39 @@ function loadFile(file) {
   img.onerror = () => { alert('Could not decode image.'); URL.revokeObjectURL(objUrl); };
   img.src = objUrl;
 
-  // Read EXIF for JPEG files
-  const isJpeg = file.type === 'image/jpeg'
-    || /\.jpe?g$/i.test(file.name);
+  // Read EXIF — use raw ArrayBuffer so embedding never depends on piexifjs parsing
+  const isJpeg = file.type === 'image/jpeg' || /\.jpe?g$/i.test(file.name);
   const exifEl = document.getElementById('infoExif');
+  origExifBytes = null; originalExif = null; origJpegB64 = null;
+
   if (!isJpeg) {
-    originalExif = null; origJpegB64 = null;
     exifEl.textContent = 'N/A (not JPEG)'; exifEl.style.color = 'var(--muted)';
-  } else if (!piexifOk) {
-    originalExif = null; origJpegB64 = null;
-    exifEl.textContent = 'Library failed to load'; exifEl.style.color = 'var(--warn)';
   } else {
     exifEl.textContent = 'Reading…'; exifEl.style.color = 'var(--muted)';
     const reader = new FileReader();
     reader.onload = e => {
-      try {
-        originalExif = piexif.load(e.target.result);
-        origJpegB64  = e.target.result;
-        // Check if any actual EXIF data exists (not just empty IFDs)
-        const hasData = Object.values(originalExif).some(
-          ifd => ifd && typeof ifd === 'object' && Object.keys(ifd).length > 0
-        );
-        if (hasData) {
-          exifEl.textContent = '✓ Found'; exifEl.style.color = 'var(--success)';
+      const buf = e.target.result;
+      // 1. Extract raw EXIF bytes — used for reliable byte-level embedding on export
+      origExifBytes = extractExifSegment(buf);
+      if (!origExifBytes) {
+        exifEl.textContent = 'None embedded'; exifEl.style.color = 'var(--muted)';
+        return;
+      }
+      exifEl.textContent = '✓ Found'; exifEl.style.color = 'var(--success)';
+      // 2. Also try piexifjs for the display panel (best-effort, failures are harmless)
+      if (piexifOk) {
+        try {
+          const dataUrl = bufToDataUrl(buf, 'image/jpeg');
+          originalExif = piexif.load(dataUrl);
+          origJpegB64  = dataUrl;
           renderExifPanel(originalExif);
-        } else {
-          originalExif = null; origJpegB64 = null;
-          exifEl.textContent = 'None embedded'; exifEl.style.color = 'var(--muted)';
-        }
-      } catch (err) {
-        originalExif = null; origJpegB64 = null;
-        exifEl.textContent = 'Could not parse'; exifEl.style.color = 'var(--warn)';
-        console.warn('EXIF read failed:', err);
+        } catch { /* display panel stays hidden — embedding still works */ }
       }
     };
-    reader.readAsDataURL(file);
+    reader.onerror = () => {
+      exifEl.textContent = 'Read error'; exifEl.style.color = 'var(--warn)';
+    };
+    reader.readAsArrayBuffer(file);
   }
 }
 
@@ -954,13 +1009,11 @@ async function doExport() {
 
     let blob;
     let metaEmbedded = false;
-    const canEmbedMeta = preserveMeta && exportFmt === 'jpeg' && originalExif && origJpegB64 && piexifOk;
-    if (canEmbedMeta) {
-      const dataUrl  = off.toDataURL('image/jpeg', quality);
-      const withExif = embedExif(dataUrl, dims);
-      // embedExif returns original dataUrl unchanged if it fails, so check they differ
-      metaEmbedded = withExif !== dataUrl;
-      blob = dataUrlToBlob(withExif);
+    // Raw byte injection — works regardless of whether piexifjs could parse the EXIF
+    if (preserveMeta && exportFmt === 'jpeg' && origExifBytes) {
+      const rawBlob = await new Promise(res => off.toBlob(res, 'image/jpeg', quality));
+      blob = await injectExifBytes(rawBlob, origExifBytes);
+      metaEmbedded = true;
     } else {
       blob = await new Promise(res => off.toBlob(res, mime, quality));
     }
