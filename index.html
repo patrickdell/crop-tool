@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aspect Ratio Calculator &amp; Crop Tool</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --card: #171a21;
+      --ink: #e8eefc;
+      --muted: #9fb0d1;
+      --accent: #DA161F;
+      --line: #252a36;
+      --success: #2ecc71;
+      --warn: #f5a623;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    .wrap { max-width: 760px; margin: 32px auto; padding: 0 16px 80px; }
+    h1 { font-size: 22px; margin: 0 0 6px; }
+    p.sub { color: var(--muted); margin: 0 0 0; font-size: 13px; }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--card); border: 1px solid var(--line);
+      border-radius: 14px; padding: 20px; margin-top: 16px;
+    }
+    .section-label {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.7px; color: var(--muted); margin: 0 0 12px;
+    }
+
+    /* ── Form basics ── */
+    label { color: var(--muted); font-size: 12px; display: block; margin-bottom: 4px; }
+    input[type="number"] {
+      width: 100%; padding: 10px 12px; border-radius: 10px;
+      border: 1px solid var(--line); background: #0c0f14; color: var(--ink); font-size: 14px;
+    }
+    input[type="number"]:disabled { background: #0a0d12; color: #6c7a95; border-style: dashed; }
+    input[type="number"].err { border-color: var(--accent); }
+    .err-msg { color: var(--accent); font-size: 12px; min-height: 14px; margin-top: 3px; }
+    input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+    input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
+
+    /* ── Chips ── */
+    .chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+    .chip {
+      padding: 6px 11px; border: 1px solid var(--line); background: #10131a;
+      color: var(--ink); border-radius: 999px; cursor: pointer; font-size: 12px;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .chip:hover { border-color: var(--muted); }
+    .chip.active { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+    /* ── Buttons ── */
+    .btn {
+      padding: 9px 15px; border-radius: 8px; border: 1px solid var(--line);
+      background: #10131a; color: var(--ink); cursor: pointer; font-size: 13px;
+      transition: border-color 0.15s;
+    }
+    .btn:hover { border-color: var(--muted); }
+    .btn-primary {
+      background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
+      padding: 10px 22px; font-size: 14px;
+    }
+    .btn-primary:hover:not(:disabled) { background: #bb1219; border-color: #bb1219; }
+    .btn-primary:disabled { background: #4a0c10; border-color: #4a0c10; color: #9f5055; cursor: not-allowed; }
+
+    /* ── Calculator ── */
+    .calc-grid { display: grid; gap: 12px; grid-template-columns: repeat(12, 1fr); align-items: end; }
+    .result-line { font-size: 20px; font-weight: 700; }
+    .result-meta { color: var(--muted); font-size: 13px; margin-top: 2px; }
+    .flip-cell { display: flex; align-items: center; justify-content: center; }
+
+    /* ── Upload zone ── */
+    .upload-zone {
+      border: 2px dashed var(--line); border-radius: 12px; padding: 36px 20px;
+      text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s;
+      user-select: none;
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: var(--accent); background: rgba(218, 22, 31, 0.04);
+    }
+    .upload-icon { font-size: 30px; margin-bottom: 8px; }
+    .upload-zone p { margin: 4px 0; color: var(--muted); font-size: 14px; }
+    .browse-link { color: var(--accent); cursor: pointer; text-decoration: underline; }
+
+    /* ── Image info bar ── */
+    .image-info-bar {
+      display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
+      padding-top: 14px; border-top: 1px solid var(--line); margin-top: 14px;
+      font-size: 13px; color: var(--muted);
+    }
+    .image-info-bar b { color: var(--ink); font-weight: 500; }
+
+    /* ── Crop preview ── */
+    .crop-wrapper {
+      position: relative; overflow: hidden; border-radius: 10px;
+      background: #0a0d12; display: flex; align-items: center; justify-content: center;
+      min-height: 160px;
+    }
+    #previewCanvas {
+      display: block; max-width: 100%; border-radius: 6px;
+      cursor: crosshair; touch-action: none;
+    }
+    .crop-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+    .crop-info-box {
+      background: #0c0f14; border: 1px solid var(--line); border-radius: 8px;
+      padding: 9px 14px; font-size: 13px; flex: 1; min-width: 180px;
+    }
+    .crop-dim { font-size: 17px; font-weight: 700; }
+    .crop-pos { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+    /* ── EXIF ── */
+    details { margin-top: 14px; }
+    details summary { cursor: pointer; color: var(--muted); font-size: 13px; user-select: none; list-style: none; }
+    details summary::before { content: '▶ '; font-size: 10px; }
+    details[open] summary::before { content: '▼ '; }
+    details summary:hover { color: var(--ink); }
+    .exif-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 10px; }
+    .exif-item { background: #0c0f14; border-radius: 8px; padding: 8px 10px; font-size: 12px; }
+    .exif-key { color: var(--muted); margin-bottom: 2px; }
+    .exif-val { font-weight: 600; color: var(--ink); word-break: break-word; }
+
+    /* ── Export ── */
+    .export-info-box {
+      background: #0c0f14; border: 1px solid var(--line); border-radius: 8px;
+      padding: 10px 14px; font-size: 13px; margin-top: 12px;
+    }
+    .upscale-warn { color: var(--warn); font-size: 12px; margin-top: 4px; }
+    .format-toggle { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; width: fit-content; }
+    .fmt-btn {
+      padding: 8px 16px; border: none; background: #10131a; color: var(--muted);
+      cursor: pointer; font-size: 13px; transition: background 0.15s, color 0.15s;
+    }
+    .fmt-btn + .fmt-btn { border-left: 1px solid var(--line); }
+    .fmt-btn.active { background: #252a36; color: var(--ink); font-weight: 600; }
+    .quality-row { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
+    .quality-row label { flex: 0 0 auto; margin-bottom: 0; min-width: 50px; }
+    .quality-num { font-size: 13px; color: var(--ink); min-width: 36px; text-align: right; }
+    .meta-toggle-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; }
+    .meta-toggle-row label { margin-bottom: 0; cursor: pointer; color: var(--ink); }
+    .tag { font-size: 11px; color: var(--muted); background: #252a36; border-radius: 4px; padding: 2px 6px; }
+    .custom-size-row { display: none; gap: 10px; align-items: flex-end; margin-top: 10px; }
+    .custom-size-row.visible { display: flex; }
+    .custom-size-row .sep { color: var(--muted); padding-bottom: 11px; }
+    .export-footer { display: flex; align-items: center; gap: 14px; margin-top: 16px; flex-wrap: wrap; }
+    .export-status { color: var(--muted); font-size: 13px; }
+    .export-status.ok { color: var(--success); }
+
+    @media (max-width: 480px) {
+      .crop-row { flex-direction: column; align-items: stretch; }
+      .export-footer { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Aspect Ratio Calculator &amp; Crop Tool</h1>
+  <p class="sub">Calculate crop dimensions, preview and interactively crop images, export with metadata preserved.</p>
+
+  <!-- ── Calculator ───────────────────────────────────────────── -->
+  <div class="card">
+    <p class="section-label">Aspect Ratio</p>
+    <div class="chip-row" id="ratioChips">
+      <button class="chip" data-r="3:2">3:2</button>
+      <button class="chip" data-r="4:3">4:3</button>
+      <button class="chip" data-r="16:9">16:9</button>
+      <button class="chip" data-r="1:1">1:1</button>
+      <button class="chip" data-r="4:5">4:5</button>
+      <button class="chip" data-r="2:3">2:3</button>
+      <button class="chip" data-r="9:16">9:16</button>
+      <button class="chip" data-r="5:4">5:4</button>
+    </div>
+
+    <div class="calc-grid" style="margin-top:14px;">
+      <div style="grid-column:span 4;">
+        <label>Width (px)</label>
+        <input id="calcW" type="number" min="1">
+        <div id="wErr" class="err-msg"></div>
+      </div>
+      <div class="flip-cell" style="grid-column:span 1;">
+        <button id="flipBtn" class="btn" title="Swap width ↔ height">⇆</button>
+      </div>
+      <div style="grid-column:span 4;">
+        <label>Height (px)</label>
+        <input id="calcH" type="number" min="1">
+        <div id="hErr" class="err-msg"></div>
+      </div>
+      <div style="grid-column:span 3; display:flex; align-items:flex-end; padding-bottom:2px;">
+        <div>
+          <div id="calcResult" class="result-line">—</div>
+          <div id="calcMeta" class="result-meta"></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:12px; display:flex; gap:8px;">
+      <button id="resetBtn" class="btn">Reset</button>
+    </div>
+  </div>
+
+  <!-- ── Image Upload ──────────────────────────────────────────── -->
+  <div class="card">
+    <p class="section-label">Image</p>
+    <div class="upload-zone" id="uploadZone" tabindex="0" role="button">
+      <div class="upload-icon">🖼</div>
+      <p><strong>Drop an image here</strong> or <span class="browse-link" id="browseLink">browse</span></p>
+      <p>JPEG · PNG · WebP · GIF · BMP</p>
+      <input type="file" id="fileInput" accept="image/*" style="display:none;">
+    </div>
+    <div class="image-info-bar" id="imageInfoBar" style="display:none;">
+      <span>File: <b id="infoName"></b></span>
+      <span>Size: <b id="infoSize"></b></span>
+      <span>Dimensions: <b id="infoDims"></b></span>
+      <span>Format: <b id="infoFormat"></b></span>
+      <span>EXIF: <b id="infoExif" style="color:var(--muted)">—</b></span>
+      <button id="removeBtn" class="btn" style="margin-left:auto;">Remove image</button>
+    </div>
+  </div>
+
+  <!-- ── Crop Preview ──────────────────────────────────────────── -->
+  <div class="card" id="cropCard" style="display:none;">
+    <p class="section-label">Crop Preview</p>
+    <div class="crop-wrapper" id="cropWrapper">
+      <canvas id="previewCanvas"></canvas>
+    </div>
+    <div class="crop-row">
+      <div class="crop-info-box">
+        <div id="cropDim" class="crop-dim">—</div>
+        <div id="cropPos" class="crop-pos">Drag to reposition · drag corners to resize</div>
+      </div>
+      <button id="centerBtn" class="btn">Center</button>
+      <button id="fitBtn" class="btn">Fit to image</button>
+    </div>
+    <details id="exifDetails" style="display:none;">
+      <summary>Camera &amp; metadata</summary>
+      <div class="exif-grid" id="exifGrid"></div>
+    </details>
+  </div>
+
+  <!-- ── Export ───────────────────────────────────────────────── -->
+  <div class="card" id="exportCard" style="display:none;">
+    <p class="section-label">Export</p>
+
+    <label>Output size</label>
+    <div class="chip-row" id="sizeChips">
+      <button class="chip active" data-sz="original">Original crop</button>
+      <button class="chip" data-sz="3840">4K – 3840px</button>
+      <button class="chip" data-sz="1920">FHD – 1920px</button>
+      <button class="chip" data-sz="1280">HD – 1280px</button>
+      <button class="chip" data-sz="2000">Web L – 2000px</button>
+      <button class="chip" data-sz="1200">Web M – 1200px</button>
+      <button class="chip" data-sz="800">Web S – 800px</button>
+      <button class="chip" data-sz="custom">Custom…</button>
+    </div>
+
+    <div class="custom-size-row" id="customRow">
+      <div>
+        <label>Width (px)</label>
+        <input id="exportCustomW" type="number" min="1" style="width:120px;">
+      </div>
+      <div class="sep">×</div>
+      <div>
+        <label>Height (px)</label>
+        <input id="exportCustomH" type="number" min="1" style="width:120px;" disabled>
+      </div>
+    </div>
+
+    <div class="export-info-box">
+      Output: <strong id="exportDims">—</strong>
+      <div id="upscaleWarn" class="upscale-warn" style="display:none;">
+        ⚠ Target size exceeds crop resolution — image will be upscaled.
+      </div>
+    </div>
+
+    <div style="margin-top:14px;">
+      <label>Format</label>
+      <div class="format-toggle">
+        <button class="fmt-btn active" id="fmtJpeg">JPEG</button>
+        <button class="fmt-btn" id="fmtPng">PNG</button>
+        <button class="fmt-btn" id="fmtWebp">WebP</button>
+      </div>
+    </div>
+
+    <div class="quality-row" id="qualityRow">
+      <label>Quality</label>
+      <input type="range" id="qualitySlider" min="50" max="100" value="92">
+      <span class="quality-num" id="qualityNum">92</span>
+    </div>
+
+    <div class="meta-toggle-row">
+      <input type="checkbox" id="preserveMeta" checked>
+      <label for="preserveMeta">Preserve EXIF metadata</label>
+      <span class="tag" id="metaTag">JPEG only</span>
+    </div>
+
+    <div class="export-footer">
+      <button class="btn btn-primary" id="downloadBtn" disabled>Download crop</button>
+      <span class="export-status" id="exportStatus"></span>
+    </div>
+  </div>
+</div>
+
+<!-- piexifjs for EXIF read/write -->
+<script src="https://cdn.jsdelivr.net/npm/piexifjs@1.0.6/piexif.js"></script>
+<script>
+'use strict';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────────────────────
+let ratioStr      = '3:2';
+let activeField   = null;          // 'w' | 'h' | null
+let uploadedImg   = null;          // HTMLImageElement
+let originalFile  = null;          // File
+let originalExif  = null;          // piexif parsed object | null
+let origJpegB64   = null;          // base64 JPEG data for EXIF re-injection
+let cropRect      = { x:0, y:0, w:0, h:0 }; // in image pixels (floats OK)
+let previewScale  = 1;             // canvas px per image px
+let interaction   = null;          // active drag descriptor
+let exportFmt     = 'jpeg';
+let exportSzKey   = 'original';
+
+const piexifOk = typeof piexif !== 'undefined';
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Utilities
+// ─────────────────────────────────────────────────────────────────────────────
+function ratioNum(str) {
+  if (!str) return 1;
+  const sep = str.includes(':') ? ':' : '/';
+  const [a, b] = str.split(sep).map(Number);
+  return a / b;
+}
+
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(v, hi)); }
+
+function fmtBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1048576).toFixed(1) + ' MB';
+}
+
+// EXIF rational [num, den] → readable string
+function fmtRational(arr, decimals = 1) {
+  if (!Array.isArray(arr) || arr[1] === 0) return null;
+  return (arr[0] / arr[1]).toFixed(decimals).replace(/\.0+$/, '');
+}
+
+function fmtShutter(arr) {
+  if (!Array.isArray(arr) || arr[1] === 0) return null;
+  const v = arr[0] / arr[1];
+  if (v >= 1) return v.toFixed(1).replace(/\.0$/, '') + 's';
+  return '1/' + Math.round(arr[1] / arr[0]) + 's';
+}
+
+function fmtExifDate(s) {
+  if (!s || typeof s !== 'string') return null;
+  // "YYYY:MM:DD HH:MM:SS"
+  return s.slice(0, 10).replace(/:/g, '-') + (s.length > 10 ? ' ' + s.slice(11, 16) : '');
+}
+
+function dataUrlToBlob(dataUrl) {
+  const [hdr, b64] = dataUrl.split(',');
+  const mime = hdr.match(/:(.*?);/)[1];
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Calculator
+// ─────────────────────────────────────────────────────────────────────────────
+const calcWEl    = document.getElementById('calcW');
+const calcHEl    = document.getElementById('calcH');
+const resultEl   = document.getElementById('calcResult');
+const calcMetaEl = document.getElementById('calcMeta');
+const wErrEl     = document.getElementById('wErr');
+const hErrEl     = document.getElementById('hErr');
+
+function setRatio(str) {
+  ratioStr = str;
+  localStorage.setItem('ar_preset', str);
+  document.querySelectorAll('#ratioChips .chip')
+    .forEach(b => b.classList.toggle('active', b.dataset.r === str));
+  liveCalc();
+  if (uploadedImg) { updateCropForRatio(); renderPreview(); refreshCropInfo(); refreshExportInfo(); }
+}
+
+document.querySelectorAll('#ratioChips .chip')
+  .forEach(b => b.addEventListener('click', () => setRatio(b.dataset.r)));
+
+function lockField(f) {
+  activeField = f;
+  calcWEl.disabled = f === 'h';
+  calcHEl.disabled = f === 'w';
+}
+
+function clearErr(el, msgEl) { el.classList.remove('err'); msgEl.textContent = ''; }
+function showErr(el, msgEl, msg) { el.classList.add('err'); msgEl.textContent = msg; }
+
+function runCalc() {
+  clearErr(calcWEl, wErrEl); clearErr(calcHEl, hErrEl);
+  const r = ratioNum(ratioStr);
+  let W, H;
+  if (activeField === 'w') {
+    W = Number(calcWEl.value);
+    if (!W) { showErr(calcWEl, wErrEl, 'Enter width'); resultEl.textContent = '—'; calcMetaEl.textContent = ''; return; }
+    H = Math.round(W / r);
+  } else if (activeField === 'h') {
+    H = Number(calcHEl.value);
+    if (!H) { showErr(calcHEl, hErrEl, 'Enter height'); resultEl.textContent = '—'; calcMetaEl.textContent = ''; return; }
+    W = Math.round(H * r);
+  } else { resultEl.textContent = '—'; calcMetaEl.textContent = ''; return; }
+  resultEl.textContent = `${W} × ${H} px`;
+  calcMetaEl.textContent = `Ratio ${ratioStr}`;
+}
+
+function liveCalc() {
+  if ((activeField === 'w' && calcWEl.value) || (activeField === 'h' && calcHEl.value)) runCalc();
+}
+
+function handleCalcInput(field) {
+  return () => {
+    if (field === 'w') {
+      if (calcWEl.value) { lockField('w'); calcHEl.value = ''; clearErr(calcHEl, hErrEl); }
+      else lockField(null);
+    } else {
+      if (calcHEl.value) { lockField('h'); calcWEl.value = ''; clearErr(calcWEl, wErrEl); }
+      else lockField(null);
+    }
+    liveCalc();
+  };
+}
+
+calcWEl.addEventListener('focus', () => lockField('w'));
+calcHEl.addEventListener('focus', () => lockField('h'));
+calcWEl.addEventListener('input', handleCalcInput('w'));
+calcHEl.addEventListener('input', handleCalcInput('h'));
+[calcWEl, calcHEl].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') runCalc(); }));
+
+document.getElementById('flipBtn').addEventListener('click', () => {
+  if (calcWEl.value) {
+    calcHEl.value = calcWEl.value; calcWEl.value = ''; lockField('h');
+  } else if (calcHEl.value) {
+    calcWEl.value = calcHEl.value; calcHEl.value = ''; lockField('w');
+  }
+  liveCalc();
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  setRatio('3:2'); calcWEl.value = ''; calcHEl.value = '';
+  lockField(null); resultEl.textContent = '—'; calcMetaEl.textContent = '';
+});
+
+setRatio(localStorage.getItem('ar_preset') || '3:2');
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Image Upload
+// ─────────────────────────────────────────────────────────────────────────────
+const uploadZone = document.getElementById('uploadZone');
+const fileInput  = document.getElementById('fileInput');
+
+document.getElementById('browseLink').addEventListener('click', () => fileInput.click());
+uploadZone.addEventListener('click', e => { if (e.target.id !== 'browseLink') fileInput.click(); });
+uploadZone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') fileInput.click(); });
+fileInput.addEventListener('change', e => { const f = e.target.files[0]; if (f) loadFile(f); });
+
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault(); uploadZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('image/')) loadFile(f);
+});
+
+document.getElementById('removeBtn').addEventListener('click', removeImage);
+
+function removeImage() {
+  uploadedImg = null; originalFile = null; originalExif = null; origJpegB64 = null;
+  cropRect = { x:0, y:0, w:0, h:0 };
+  document.getElementById('cropCard').style.display   = 'none';
+  document.getElementById('exportCard').style.display = 'none';
+  document.getElementById('imageInfoBar').style.display = 'none';
+  uploadZone.style.display = '';
+  document.getElementById('downloadBtn').disabled = true;
+  fileInput.value = '';
+}
+
+function loadFile(file) {
+  originalFile = file;
+  const objUrl = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    uploadedImg = img;
+    showImageInfo(file, img);
+    initCrop();
+    document.getElementById('cropCard').style.display   = '';
+    document.getElementById('exportCard').style.display = '';
+    renderPreview();
+    refreshCropInfo();
+    refreshExportInfo();
+    document.getElementById('downloadBtn').disabled = false;
+  };
+  img.onerror = () => { alert('Could not decode image.'); URL.revokeObjectURL(objUrl); };
+  img.src = objUrl;
+
+  // Read EXIF for JPEG files
+  const isJpeg = file.type === 'image/jpeg'
+    || /\.jpe?g$/i.test(file.name);
+  const exifEl = document.getElementById('infoExif');
+  if (!isJpeg) {
+    originalExif = null; origJpegB64 = null;
+    exifEl.textContent = 'N/A (not JPEG)'; exifEl.style.color = 'var(--muted)';
+  } else if (!piexifOk) {
+    originalExif = null; origJpegB64 = null;
+    exifEl.textContent = 'Library failed to load'; exifEl.style.color = 'var(--warn)';
+  } else {
+    exifEl.textContent = 'Reading…'; exifEl.style.color = 'var(--muted)';
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        originalExif = piexif.load(e.target.result);
+        origJpegB64  = e.target.result;
+        // Check if any actual EXIF data exists (not just empty IFDs)
+        const hasData = Object.values(originalExif).some(
+          ifd => ifd && typeof ifd === 'object' && Object.keys(ifd).length > 0
+        );
+        if (hasData) {
+          exifEl.textContent = '✓ Found'; exifEl.style.color = 'var(--success)';
+          renderExifPanel(originalExif);
+        } else {
+          originalExif = null; origJpegB64 = null;
+          exifEl.textContent = 'None embedded'; exifEl.style.color = 'var(--muted)';
+        }
+      } catch (err) {
+        originalExif = null; origJpegB64 = null;
+        exifEl.textContent = 'Could not parse'; exifEl.style.color = 'var(--warn)';
+        console.warn('EXIF read failed:', err);
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+}
+
+function showImageInfo(file, img) {
+  document.getElementById('infoName').textContent   = file.name.length > 32 ? file.name.slice(0,29) + '…' : file.name;
+  document.getElementById('infoSize').textContent   = fmtBytes(file.size);
+  document.getElementById('infoDims').textContent   = `${img.naturalWidth} × ${img.naturalHeight}`;
+  document.getElementById('infoFormat').textContent = (file.type.replace('image/', '') || 'unknown').toUpperCase();
+  document.getElementById('imageInfoBar').style.display = 'flex';
+  uploadZone.style.display = 'none';
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EXIF Panel
+// ─────────────────────────────────────────────────────────────────────────────
+function renderExifPanel(exif) {
+  const grid    = document.getElementById('exifGrid');
+  const details = document.getElementById('exifDetails');
+  grid.innerHTML = '';
+
+  const g = (ifd, tag) => { try { return exif[ifd]?.[tag]; } catch { return undefined; } };
+  const row = (k, v) => {
+    if (v === undefined || v === null || v === '') return;
+    const d = document.createElement('div');
+    d.className = 'exif-item';
+    d.innerHTML = `<div class="exif-key">${k}</div><div class="exif-val">${v}</div>`;
+    grid.appendChild(d);
+  };
+
+  const make  = (g('0th', piexif.ImageIFD.Make)  || '').trim();
+  const model = (g('0th', piexif.ImageIFD.Model) || '').trim();
+  const camera = model || make;
+  row('Camera', camera);
+  row('Date taken',    fmtExifDate(g('Exif', piexif.ExifIFD.DateTimeOriginal)));
+  const fl = fmtRational(g('Exif', piexif.ExifIFD.FocalLength));
+  row('Focal length',  fl ? fl + ' mm' : null);
+  const fn = fmtRational(g('Exif', piexif.ExifIFD.FNumber));
+  row('Aperture',      fn ? 'ƒ/' + fn : null);
+  row('Shutter',       fmtShutter(g('Exif', piexif.ExifIFD.ExposureTime)));
+  row('ISO',           g('Exif', piexif.ExifIFD.ISOSpeedRatings));
+  row('Artist',        g('0th', piexif.ImageIFD.Artist));
+  row('Copyright',     g('0th', piexif.ImageIFD.Copyright));
+  row('Software',      g('0th', piexif.ImageIFD.Software));
+  const lat = g('GPS', piexif.GPSIFD.GPSLatitude);
+  const lng = g('GPS', piexif.GPSIFD.GPSLongitude);
+  if (lat && lng) row('GPS', 'Embedded');
+
+  details.style.display = grid.children.length > 0 ? '' : 'none';
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Crop Logic
+// ─────────────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('previewCanvas');
+const ctx    = canvas.getContext('2d');
+
+function initCrop() {
+  const r = ratioNum(ratioStr);
+  const iw = uploadedImg.naturalWidth, ih = uploadedImg.naturalHeight;
+  let cw, ch;
+  if (iw / ih > r) { ch = ih; cw = ch * r; }
+  else             { cw = iw; ch = cw / r; }
+  cropRect = { x: (iw - cw) / 2, y: (ih - ch) / 2, w: cw, h: ch };
+}
+
+function updateCropForRatio() {
+  const r   = ratioNum(ratioStr);
+  const iw  = uploadedImg.naturalWidth, ih = uploadedImg.naturalHeight;
+  const cx  = cropRect.x + cropRect.w / 2, cy = cropRect.y + cropRect.h / 2;
+  // Preserve approximate area
+  const area = cropRect.w * cropRect.h;
+  let nw = Math.sqrt(area * r), nh = nw / r;
+  if (nw > iw) { nw = iw; nh = nw / r; }
+  if (nh > ih) { nh = ih; nw = nh * r; }
+  cropRect = {
+    x: clamp(cx - nw / 2, 0, iw - nw),
+    y: clamp(cy - nh / 2, 0, ih - nh),
+    w: nw, h: nh
+  };
+}
+
+function clampCrop() {
+  const iw = uploadedImg.naturalWidth, ih = uploadedImg.naturalHeight;
+  cropRect.w = clamp(cropRect.w, 10, iw);
+  cropRect.h = clamp(cropRect.h, 10, ih);
+  cropRect.x = clamp(cropRect.x, 0, iw - cropRect.w);
+  cropRect.y = clamp(cropRect.y, 0, ih - cropRect.h);
+}
+
+function renderPreview() {
+  if (!uploadedImg) return;
+  const wrapper = document.getElementById('cropWrapper');
+  const maxW = wrapper.clientWidth || 700;
+  const maxH = Math.round(Math.min(maxW * 0.72, 520));
+  const scale = Math.min(maxW / uploadedImg.naturalWidth, maxH / uploadedImg.naturalHeight);
+  previewScale = Math.min(scale, 1); // never upscale preview
+
+  const dw = Math.round(uploadedImg.naturalWidth  * previewScale);
+  const dh = Math.round(uploadedImg.naturalHeight * previewScale);
+  canvas.width  = dw;
+  canvas.height = dh;
+  canvas.style.width  = dw + 'px';
+  canvas.style.height = dh + 'px';
+
+  // Base image
+  ctx.drawImage(uploadedImg, 0, 0, dw, dh);
+
+  // Dark vignette outside crop
+  const cx = cropRect.x * previewScale;
+  const cy = cropRect.y * previewScale;
+  const cw = cropRect.w * previewScale;
+  const ch = cropRect.h * previewScale;
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.52)';
+  ctx.fillRect(0, 0, dw, dh);
+  // Punch out the crop area so base image shows through
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.fillRect(cx, cy, cw, ch);
+  ctx.restore();
+
+  // Re-draw image in crop area (fully opaque, no dark overlay)
+  ctx.drawImage(uploadedImg,
+    cropRect.x, cropRect.y, cropRect.w, cropRect.h,
+    cx, cy, cw, ch);
+
+  // Rule-of-thirds grid
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = 1;
+  for (let i = 1; i < 3; i++) {
+    ctx.beginPath(); ctx.moveTo(cx + cw*i/3, cy); ctx.lineTo(cx + cw*i/3, cy+ch); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx, cy + ch*i/3); ctx.lineTo(cx+cw, cy + ch*i/3); ctx.stroke();
+  }
+  ctx.restore();
+
+  // Crop border
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(cx + 0.75, cy + 0.75, cw - 1.5, ch - 1.5);
+
+  // Corner handles
+  const hs = 10; // half-size of handle bracket
+  const lw = 2.5;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = lw;
+  ctx.lineCap = 'round';
+  const corners = [[cx, cy], [cx+cw, cy], [cx, cy+ch], [cx+cw, cy+ch]];
+  const dirs    = [[1,1],    [-1,1],      [1,-1],      [-1,-1]];
+  corners.forEach(([hx, hy], i) => {
+    const [dx, dy] = dirs[i];
+    ctx.beginPath(); ctx.moveTo(hx + dx*hs, hy); ctx.lineTo(hx, hy); ctx.lineTo(hx, hy + dy*hs); ctx.stroke();
+  });
+}
+
+function refreshCropInfo() {
+  document.getElementById('cropDim').textContent =
+    `${Math.round(cropRect.w)} × ${Math.round(cropRect.h)} px`;
+  document.getElementById('cropPos').textContent =
+    `Position ${Math.round(cropRect.x)}, ${Math.round(cropRect.y)} · Ratio ${ratioStr}`;
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Crop Interaction (mouse + touch)
+// ─────────────────────────────────────────────────────────────────────────────
+const HIT_R = 16; // handle hit radius in canvas px
+
+function canvasPos(e) {
+  const r  = canvas.getBoundingClientRect();
+  const sx = canvas.width  / r.width;
+  const sy = canvas.height / r.height;
+  const src = e.touches ? e.touches[0] : e;
+  return { x: (src.clientX - r.left) * sx, y: (src.clientY - r.top) * sy };
+}
+
+function hitTest(px, py) {
+  const cx = cropRect.x * previewScale, cy = cropRect.y * previewScale;
+  const cw = cropRect.w * previewScale, ch = cropRect.h * previewScale;
+  const corners = [
+    { id:'tl', x:cx,    y:cy    },
+    { id:'tr', x:cx+cw, y:cy    },
+    { id:'bl', x:cx,    y:cy+ch },
+    { id:'br', x:cx+cw, y:cy+ch },
+  ];
+  for (const c of corners) {
+    if (Math.hypot(px - c.x, py - c.y) < HIT_R) return c.id;
+  }
+  if (px >= cx && px <= cx+cw && py >= cy && py <= cy+ch) return 'move';
+  return null;
+}
+
+const cursorMap = { tl:'nw-resize', tr:'ne-resize', bl:'sw-resize', br:'se-resize', move:'move' };
+
+canvas.addEventListener('mousemove', e => {
+  if (!uploadedImg) return;
+  if (interaction) { doInteract(canvasPos(e)); return; }
+  const h = hitTest(...Object.values(canvasPos(e)));
+  canvas.style.cursor = cursorMap[h] || 'default';
+});
+
+canvas.addEventListener('mousedown', e => {
+  if (!uploadedImg) return;
+  e.preventDefault();
+  startInteract(canvasPos(e));
+});
+
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  startInteract(canvasPos(e));
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (interaction) doInteract(canvasPos(e));
+}, { passive: false });
+
+window.addEventListener('mouseup',  () => { interaction = null; });
+window.addEventListener('touchend', () => { interaction = null; });
+
+function startInteract(pos) {
+  const handle = hitTest(pos.x, pos.y);
+  if (!handle) return;
+  const snap = { ...cropRect };
+  const desc = { handle, startMouse: pos, startCrop: snap };
+  if (handle !== 'move') {
+    const anchors = {
+      tl: { x: snap.x + snap.w, y: snap.y + snap.h },
+      tr: { x: snap.x,          y: snap.y + snap.h },
+      bl: { x: snap.x + snap.w, y: snap.y           },
+      br: { x: snap.x,          y: snap.y           },
+    };
+    desc.anchor = anchors[handle];
+  }
+  interaction = desc;
+}
+
+function doInteract(pos) {
+  if (!interaction || !uploadedImg) return;
+  const { handle, startMouse, startCrop, anchor } = interaction;
+
+  if (handle === 'move') {
+    const dx = (pos.x - startMouse.x) / previewScale;
+    const dy = (pos.y - startMouse.y) / previewScale;
+    cropRect.x = clamp(startCrop.x + dx, 0, uploadedImg.naturalWidth  - cropRect.w);
+    cropRect.y = clamp(startCrop.y + dy, 0, uploadedImg.naturalHeight - cropRect.h);
+  } else {
+    // Resize from corner, maintaining ratio
+    const r    = ratioNum(ratioStr);
+    const imgX = pos.x / previewScale;
+    const imgY = pos.y / previewScale;
+    let dx = imgX - anchor.x;
+    let dy = imgY - anchor.y;
+
+    let nw = Math.abs(dx), nh = Math.abs(dy);
+    // Fit to ratio — pick dominant axis, snap the other
+    if (nw / r >= nh) nh = nw / r;
+    else              nw = nh * r;
+
+    nw = Math.max(20, nw);
+    nh = Math.max(20, nw / r);
+
+    // Clamp to image
+    const iw = uploadedImg.naturalWidth, ih = uploadedImg.naturalHeight;
+    if (nw > iw) { nw = iw; nh = nw / r; }
+    if (nh > ih) { nh = ih; nw = nh * r; }
+
+    cropRect.x = dx >= 0 ? anchor.x : anchor.x - nw;
+    cropRect.y = dy >= 0 ? anchor.y : anchor.y - nh;
+    cropRect.w = nw;
+    cropRect.h = nh;
+    clampCrop();
+  }
+
+  renderPreview();
+  refreshCropInfo();
+  refreshExportInfo();
+}
+
+// Center / Fit buttons
+document.getElementById('centerBtn').addEventListener('click', () => {
+  if (!uploadedImg) return;
+  cropRect.x = (uploadedImg.naturalWidth  - cropRect.w) / 2;
+  cropRect.y = (uploadedImg.naturalHeight - cropRect.h) / 2;
+  renderPreview(); refreshCropInfo();
+});
+
+document.getElementById('fitBtn').addEventListener('click', () => {
+  if (!uploadedImg) return;
+  initCrop(); renderPreview(); refreshCropInfo(); refreshExportInfo();
+});
+
+// Responsive redraw
+new ResizeObserver(() => { if (uploadedImg) renderPreview(); })
+  .observe(document.getElementById('cropWrapper'));
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Export
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Size chips
+document.querySelectorAll('#sizeChips .chip').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#sizeChips .chip').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    exportSzKey = btn.dataset.sz;
+    const customRow = document.getElementById('customRow');
+    customRow.classList.toggle('visible', exportSzKey === 'custom');
+    refreshExportInfo();
+  });
+});
+
+// Custom width → auto-height
+document.getElementById('exportCustomW').addEventListener('input', () => {
+  const w = Number(document.getElementById('exportCustomW').value);
+  document.getElementById('exportCustomH').value = w ? Math.round(w / ratioNum(ratioStr)) : '';
+  refreshExportInfo();
+});
+
+// Format buttons
+['Jpeg','Png','Webp'].forEach(f => {
+  document.getElementById('fmt' + f).addEventListener('click', () => setExportFmt(f.toLowerCase()));
+});
+
+function setExportFmt(fmt) {
+  exportFmt = fmt;
+  ['jpeg','png','webp'].forEach(f => {
+    document.getElementById('fmt' + f.charAt(0).toUpperCase() + f.slice(1)).classList.toggle('active', f === fmt);
+  });
+  const lossless = fmt === 'png';
+  document.getElementById('qualityRow').style.display = lossless ? 'none' : '';
+  const metaCheck = document.getElementById('preserveMeta');
+  metaCheck.disabled = fmt !== 'jpeg';
+  document.getElementById('metaTag').style.opacity = fmt === 'jpeg' ? '1' : '0.4';
+  refreshExportInfo();
+}
+
+// Quality slider display
+document.getElementById('qualitySlider').addEventListener('input', () => {
+  document.getElementById('qualityNum').textContent = document.getElementById('qualitySlider').value;
+});
+
+function getExportDims() {
+  if (!uploadedImg || cropRect.w === 0) return null;
+  const r = ratioNum(ratioStr);
+  if (exportSzKey === 'original') return { w: Math.round(cropRect.w), h: Math.round(cropRect.h) };
+  if (exportSzKey === 'custom') {
+    const w = Number(document.getElementById('exportCustomW').value);
+    if (!w) return null;
+    return { w, h: Math.round(w / r) };
+  }
+  const tw = Number(exportSzKey);
+  return { w: tw, h: Math.round(tw / r) };
+}
+
+function refreshExportInfo() {
+  const dims = getExportDims();
+  const dimsEl = document.getElementById('exportDims');
+  const warnEl = document.getElementById('upscaleWarn');
+  if (!dims) { dimsEl.textContent = '—'; warnEl.style.display = 'none'; return; }
+  dimsEl.textContent = `${dims.w} × ${dims.h} px`;
+  const isUp = dims.w > Math.round(cropRect.w) || dims.h > Math.round(cropRect.h);
+  warnEl.style.display = isUp ? '' : 'none';
+}
+
+// Download
+document.getElementById('downloadBtn').addEventListener('click', doExport);
+
+async function doExport() {
+  if (!uploadedImg) return;
+  const dims = getExportDims();
+  if (!dims) { alert('Set export dimensions first.'); return; }
+
+  const statusEl = document.getElementById('exportStatus');
+  statusEl.className = 'export-status';
+  statusEl.textContent = 'Processing…';
+
+  await new Promise(r => setTimeout(r, 10)); // yield to UI
+
+  try {
+    const off = document.createElement('canvas');
+    off.width  = dims.w;
+    off.height = dims.h;
+    const offCtx = off.getContext('2d');
+
+    if (exportFmt === 'jpeg') {
+      offCtx.fillStyle = '#fff';
+      offCtx.fillRect(0, 0, dims.w, dims.h);
+    }
+
+    offCtx.drawImage(uploadedImg,
+      cropRect.x, cropRect.y, cropRect.w, cropRect.h,
+      0, 0, dims.w, dims.h);
+
+    const mime    = `image/${exportFmt}`;
+    const quality = exportFmt !== 'png' ? Number(document.getElementById('qualitySlider').value) / 100 : undefined;
+    const preserveMeta = document.getElementById('preserveMeta').checked;
+
+    let blob;
+    let metaEmbedded = false;
+    const canEmbedMeta = preserveMeta && exportFmt === 'jpeg' && originalExif && origJpegB64 && piexifOk;
+    if (canEmbedMeta) {
+      const dataUrl  = off.toDataURL('image/jpeg', quality);
+      const withExif = embedExif(dataUrl, dims);
+      // embedExif returns original dataUrl unchanged if it fails, so check they differ
+      metaEmbedded = withExif !== dataUrl;
+      blob = dataUrlToBlob(withExif);
+    } else {
+      blob = await new Promise(res => off.toBlob(res, mime, quality));
+    }
+
+    if (!blob) throw new Error('Blob creation failed');
+
+    const baseName = originalFile.name.replace(/\.[^.]+$/, '');
+    const ext      = exportFmt === 'jpeg' ? 'jpg' : exportFmt;
+    const filename = `${baseName}_${dims.w}x${dims.h}.${ext}`;
+
+    const url = URL.createObjectURL(blob);
+    const a   = Object.assign(document.createElement('a'), { href: url, download: filename });
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    let note = '';
+    if (preserveMeta && exportFmt === 'jpeg') {
+      note = metaEmbedded ? ' · metadata preserved' : ' · no source EXIF to embed';
+    }
+    statusEl.className = 'export-status ok';
+    statusEl.textContent = `✓ Saved ${filename}${note}`;
+    setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'export-status'; }, 5000);
+  } catch (err) {
+    console.error(err);
+    statusEl.textContent = 'Export failed — see console.';
+  }
+}
+
+function embedExif(newDataUrl, dims) {
+  try {
+    const exif = JSON.parse(JSON.stringify(originalExif)); // deep clone
+    if (!exif['Exif']) exif['Exif'] = {};
+    exif['Exif'][piexif.ExifIFD.PixelXDimension] = dims.w;
+    exif['Exif'][piexif.ExifIFD.PixelYDimension] = dims.h;
+    if (!exif['0th']) exif['0th'] = {};
+    exif['0th'][piexif.ImageIFD.Orientation] = 1; // reset to upright
+    delete exif['1st'];       // drop thumbnail (stale after crop)
+    delete exif['thumbnail'];
+    return piexif.insert(piexif.dump(exif), newDataUrl);
+  } catch (err) {
+    console.warn('EXIF embed failed, exporting without metadata:', err);
+    return newDataUrl;
+  }
+}
+
+// Initial format state
+setExportFmt('jpeg');
+</script>
+</body>
+</html>
